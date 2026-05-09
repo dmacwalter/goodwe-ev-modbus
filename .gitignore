@@ -1,0 +1,6 @@
+.claude/
+output.txt
+*.tgz
+*.pdf
+icon_2x.png
+scan_registers.py
