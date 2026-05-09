@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import pymodbus; print\\(pymodbus.__version__\\)\")",
+      "Bash(pip3 install *)",
+      "Bash(python3 *)",
+      "Read(//home/feela/.claude/projects/**)",
+      "Bash(mkdir -p /home/feela/.claude/projects/-home-feela-src-ev-modbus/memory)",
+      "Bash(mv /home/feela/src/.claude/projects/-home-feela-src-ev-modbus/memory/project_goodwe_ev.md /home/feela/.claude/projects/-home-feela-src-ev-modbus/memory/)"
+    ]
+  }
+}
