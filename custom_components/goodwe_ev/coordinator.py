@@ -102,15 +102,32 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             self._client.close()
             raise UpdateFailed(f"Modbus exception: {exc}") from exc
 
-        # Build static device info once
+        # Build static device info once we have a valid power-spec reading.
+        # Register 10058 can read 0 ("7kW") transiently right after the charger
+        # boots, before firmware initialises it. Since 0 is itself a *valid* spec,
+        # a plain ``.get(..., 0)`` would silently cache "7kW" for the whole
+        # session and persist it into HA's device registry. So we map a missing
+        # register to None → "unknown" and only freeze device_info_static once the
+        # spec resolves to a real value, letting a later refresh correct a
+        # boot-time misread.
         if not self.device_info_static:
-            self.device_info_static = {
-                "serial": _str_regs(raw, REG_SN, 8),
-                "sw_version": _str_regs(raw, REG_SW_VERSION, 2),
-                "hw_version": _str_regs(raw, REG_HW_VERSION, 2),
-                "power_spec": POWER_SPEC.get(raw.get(REG_POWER_SPEC, 0), "unknown"),
-                "charger_type": CHARGER_TYPE.get(raw.get(REG_CHARGER_TYPE, 0), "unknown"),
-            }
+            power_spec = POWER_SPEC.get(raw.get(REG_POWER_SPEC), "unknown")
+            if power_spec == "unknown":
+                _LOGGER.debug(
+                    "Power spec register %s not yet available (raw=%s); "
+                    "retrying on next refresh",
+                    REG_POWER_SPEC, raw.get(REG_POWER_SPEC),
+                )
+            else:
+                self.device_info_static = {
+                    "serial": _str_regs(raw, REG_SN, 8),
+                    "sw_version": _str_regs(raw, REG_SW_VERSION, 2),
+                    "hw_version": _str_regs(raw, REG_HW_VERSION, 2),
+                    "power_spec": power_spec,
+                    "charger_type": CHARGER_TYPE.get(
+                        raw.get(REG_CHARGER_TYPE), "unknown"
+                    ),
+                }
 
         return {
             # ── Electrical measurements ────────────────────────────────────
