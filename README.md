@@ -5,7 +5,7 @@ A local Modbus TCP integration for GoodWe AC EV chargers (HCA G2 series). No clo
 ## Requirements
 
 - GoodWe AC EV charger reachable over Modbus TCP (default port 502)
-- Charger firmware **V6 or newer** (reported by the charger as `6383`, i.e. V6.383) — energy consumption sensors do not work on earlier firmware
+- Charger firmware **V6 or newer** — energy consumption sensors do not work on earlier firmware
 - Home Assistant 2024.1 or newer
 - The charger's local IP address and Modbus Unit ID (default: **247**)
 
@@ -70,7 +70,7 @@ Go to **Settings → Devices & Services → Add Integration** and search for **G
 
 - Data is polled every **30 seconds** over Modbus TCP.
 - The integration communicates **locally only** — no GoodWe cloud account needed.
-- Energy consumption sensors (Total/Session/Green/Grid Energy) require charger firmware **V6 or newer**; the charger reports its firmware as `6383` (V6.383). On earlier firmware these sensors do not report.
+- Energy consumption sensors (Total/Session/Green/Grid Energy) require charger firmware **V6 or newer**. On earlier firmware these sensors do not report.
 - Total Energy resets to 0 if the charger's internal counter is cleared (e.g. factory reset).
 - The Charging switch reads its state from Charger Status (status = charging), not from the command register, so it accurately reflects whether charging is actually in progress.
 
