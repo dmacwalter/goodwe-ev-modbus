@@ -99,8 +99,12 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
                 for i, val in enumerate(resp.registers):
                     raw[start + i] = val
         except ModbusException as exc:
-            self._client.close()
             raise UpdateFailed(f"Modbus exception: {exc}") from exc
+        finally:
+            try:
+                self._client.close()
+            except Exception:
+                _LOGGER.debug("Error closing modbus client", exc_info=True)
 
         # Build static device info once we have a valid power-spec reading.
         # Register 10058 can read 0 ("7kW") transiently right after the charger
