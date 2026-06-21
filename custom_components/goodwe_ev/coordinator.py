@@ -83,28 +83,28 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         return await self.hass.async_add_executor_job(self._read_data)
 
     def _read_data(self) -> dict:
-        self._ensure_connected()
-
         raw: dict[int, int] = {}
         try:
             for start, count, required in _READ_RANGES:
-                resp = self._client.read_holding_registers(
-                    start, count=count, device_id=self._unit_id
-                )
-                if resp.isError():
-                    if required:
-                        raise UpdateFailed(f"Modbus error reading block {start}+{count}")
-                    _LOGGER.debug("Optional block %s+%s unavailable, skipping", start, count)
-                    continue
-                for i, val in enumerate(resp.registers):
-                    raw[start + i] = val
+                self._ensure_connected()
+                try:
+                    resp = self._client.read_holding_registers(
+                        start, count=count, device_id=self._unit_id
+                    )
+                    if resp.isError():
+                        if required:
+                            raise UpdateFailed(f"Modbus error reading block {start}+{count}")
+                        _LOGGER.debug("Optional block %s+%s unavailable, skipping", start, count)
+                        continue
+                    for i, val in enumerate(resp.registers):
+                        raw[start + i] = val
+                finally:
+                    try:
+                        self._client.close()
+                    except Exception:
+                        _LOGGER.debug("Error closing modbus client", exc_info=True)
         except ModbusException as exc:
             raise UpdateFailed(f"Modbus exception: {exc}") from exc
-        finally:
-            try:
-                self._client.close()
-            except Exception:
-                _LOGGER.debug("Error closing modbus client", exc_info=True)
 
         # Build static device info once we have a valid power-spec reading.
         # Register 10058 can read 0 ("7kW") transiently right after the charger
