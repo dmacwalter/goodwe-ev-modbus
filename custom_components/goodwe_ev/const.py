@@ -7,6 +7,7 @@ CONF_UNIT_ID = "unit_id"
 DEFAULT_PORT = 502
 DEFAULT_UNIT_ID = 247
 SCAN_INTERVAL = 30  # seconds
+READ_DELAY = 0.1  # seconds to pause between Modbus block reads (paces bursts)
 
 # ── Register addresses ──────────────────────────────────────────────────────
 

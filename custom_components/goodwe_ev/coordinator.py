@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from pymodbus.client import ModbusTcpClient
@@ -12,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     SCAN_INTERVAL,
+    READ_DELAY,
     REG_SN,
     REG_SW_VERSION,
     REG_HW_VERSION,
@@ -87,7 +89,12 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
 
         raw: dict[int, int] = {}
         try:
-            for start, count, required in _READ_RANGES:
+            for idx, (start, count, required) in enumerate(_READ_RANGES):
+                # Pace consecutive reads: some chargers are overwhelmed by
+                # back-to-back Modbus requests. Runs in an executor thread, so
+                # a blocking sleep is safe here and never touches the event loop.
+                if idx and READ_DELAY:
+                    time.sleep(READ_DELAY)
                 resp = self._client.read_holding_registers(
                     start, count=count, device_id=self._unit_id
                 )
