@@ -10,7 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import DOMAIN, CONF_HOST, CONF_PORT, CONF_UNIT_ID
 from .coordinator import GoodweEVCoordinator
 
-PLATFORMS = ["sensor", "switch", "number", "select"]
+PLATFORMS = ["binary_sensor", "sensor", "switch", "number", "select"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

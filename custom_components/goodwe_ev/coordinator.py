@@ -13,6 +13,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     SCAN_INTERVAL,
+    SCAN_INTERVAL_IDLE,
+    SCAN_INTERVAL_ACTIVE,
+    ACTIVE_STATUSES,
+    ACTIVE_CAR_STATES,
     READ_DELAY,
     REG_SN,
     REG_SW_VERSION,
@@ -21,6 +25,11 @@ from .const import (
     REG_CHARGER_TYPE,
     POWER_SPEC,
     CHARGER_TYPE,
+    FAULT_BITS,
+    WARNING_BITS,
+    COMMS_BITS,
+    POWER_SOURCE_BITS,
+    decode_bits,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +75,7 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         self._client = ModbusTcpClient(host, port=port, timeout=10)
         self._unit_id = unit_id
         self.device_info_static: dict = {}
+        self._interval_seconds = SCAN_INTERVAL
 
     # ── Public write helper ────────────────────────────────────────────────
 
@@ -82,7 +92,25 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
     # ── DataUpdateCoordinator ──────────────────────────────────────────────
 
     async def _async_update_data(self) -> dict:
-        return await self.hass.async_add_executor_job(self._read_data)
+        data = await self.hass.async_add_executor_job(self._read_data)
+        # Must happen on the event loop, never inside _read_data: assigning
+        # update_interval reschedules the refresh timer, which is not
+        # thread-safe from an executor thread.
+        self._apply_dynamic_interval(data)
+        return data
+
+    def _apply_dynamic_interval(self, data: dict) -> None:
+        """Poll faster while a cable is connected or a session is running."""
+        active = (
+            data.get("status") in ACTIVE_STATUSES
+            or data.get("car_status") in ACTIVE_CAR_STATES
+        )
+        wanted = SCAN_INTERVAL_ACTIVE if active else SCAN_INTERVAL_IDLE
+        if wanted == self._interval_seconds:
+            return
+        self._interval_seconds = wanted
+        self.update_interval = timedelta(seconds=wanted)
+        _LOGGER.debug("Poll interval now %ss (active=%s)", wanted, active)
 
     def _read_data(self) -> dict:
         self._ensure_connected()
@@ -136,6 +164,27 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
                     ),
                 }
 
+        # Decode fault/warning bitmasks and communication link bits once here so
+        # every entity that needs them reads a plain list rather than
+        # re-deriving the same bit arithmetic.
+        faults: list[str] = []
+        for reg, bits in FAULT_BITS.items():
+            faults.extend(decode_bits(raw.get(reg, 0), bits))
+        warnings: list[str] = []
+        for reg, bits in WARNING_BITS.items():
+            warnings.extend(decode_bits(raw.get(reg, 0), bits))
+        if faults:
+            state = "fault"
+        elif warnings:
+            state = "warning"
+        else:
+            state = "ok"
+
+        comms_raw = raw.get(10018, 0)
+        comms_links = {
+            key: bool(comms_raw & (1 << bit)) for bit, (key, _) in COMMS_BITS.items()
+        }
+
         return {
             # ── Electrical measurements ────────────────────────────────────
             "phase_a_voltage":    raw.get(10009, 0) / 10.0,
@@ -155,8 +204,14 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             "cp_state":           raw.get(10084, 0),
             "charger_type":       raw.get(10059, 0),
             "start_mode":         raw.get(10076, 0),
+            "charge_strategy":    raw.get(10077, 0),
+            "strategy_param":     raw.get(10078, 0),
+            "appointment":        raw.get(10079, 0),
+            "project_type":       raw.get(10107, 0),
             "power_source":       raw.get(10108, 0),
+            "power_source_bits":  decode_bits(raw.get(10108, 0), POWER_SOURCE_BITS),
             "comms_status":       raw.get(10018, 0),
+            "charge_duration":    _u32(raw, 10063),
             # ── Configuration (RW) ────────────────────────────────────────
             "ems_dispatch":       raw.get(10000, 0),
             "plug_charge":        raw.get(10019, 0),
@@ -165,6 +220,7 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             "max_power":          raw.get(10029, 0) / 10.0,
             "battery_soc":        raw.get(10030, 0),
             "grid_limit":         raw.get(10039, 0) / 10.0,
+            "breaker_current":    raw.get(10026, 0),
             "charge_control":     raw.get(10060, 0),
             # ── Fault bytes ───────────────────────────────────────────────
             "fault_01":           raw.get(10001, 0),
@@ -173,6 +229,11 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             "fault_05":           raw.get(10005, 0),
             "fault_06":           raw.get(10006, 0),
             "fault_07":           raw.get(10007, 0),
+            # ── Decoded aggregates ────────────────────────────────────────
+            "active_faults":      faults,
+            "active_warnings":    warnings,
+            "fault_state":        state,
+            "comms_links":        comms_links,
         }
 
     def _ensure_connected(self) -> None:
