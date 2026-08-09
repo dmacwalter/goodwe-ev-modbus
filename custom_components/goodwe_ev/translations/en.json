@@ -21,6 +21,57 @@
   },
   "entity": {
     "sensor": {
+      "fault_state": {
+        "state": {
+          "ok":      "OK",
+          "warning": "Warning",
+          "fault":   "Fault"
+        }
+      },
+      "power_source": {
+        "state": {
+          "none":            "None",
+          "grid":            "Grid",
+          "pv":              "PV",
+          "grid_pv":         "Grid + PV",
+          "battery":         "Battery",
+          "grid_battery":    "Grid + battery",
+          "pv_battery":      "PV + battery",
+          "grid_pv_battery": "Grid + PV + battery"
+        }
+      },
+      "start_mode": {
+        "state": {
+          "auth_card":       "Auth card",
+          "backend":         "Backend",
+          "local_admin":     "Local admin",
+          "vin":             "VIN",
+          "wallet_card":     "Wallet card",
+          "plug_and_charge": "Plug & Charge",
+          "scheduled":       "Scheduled",
+          "bluetooth_app":   "Bluetooth app"
+        }
+      },
+      "charge_strategy": {
+        "state": {
+          "auto_full":    "Auto full",
+          "fill_by_time": "Fill by time",
+          "fixed_amount": "Fixed amount",
+          "by_energy":    "By energy"
+        }
+      },
+      "appointment": {
+        "state": {
+          "none":   "No reservation",
+          "active": "Reservation active"
+        }
+      },
+      "project_type": {
+        "state": {
+          "dc": "DC",
+          "ac": "AC"
+        }
+      },
       "status": {
         "state": {
           "idle_no_cable":        "Idle (no cable)",
