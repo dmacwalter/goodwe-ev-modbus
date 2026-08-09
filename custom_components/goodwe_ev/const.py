@@ -4,6 +4,11 @@ CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_UNIT_ID = "unit_id"
 
+# Option keys — tunable from the integration's Configure dialog.
+CONF_SCAN_INTERVAL_IDLE = "scan_interval_idle"
+CONF_SCAN_INTERVAL_ACTIVE = "scan_interval_active"
+CONF_READ_DELAY = "read_delay"
+
 DEFAULT_PORT = 502
 DEFAULT_UNIT_ID = 247
 # ── Polling ─────────────────────────────────────────────────────────────────
@@ -12,11 +17,22 @@ DEFAULT_UNIT_ID = 247
 # plugged in at all. Idle here means "no car present", not "car present but
 # not drawing" — a plugged-in vehicle still polls at the fast rate so plug-in
 # and handshake transitions are picked up promptly.
+# These are defaults only; the effective values come from the config entry
+# options and are editable under Settings -> Devices & services -> Configure.
 SCAN_INTERVAL_IDLE = 60      # seconds, nothing connected
 SCAN_INTERVAL_ACTIVE = 30    # seconds, cable connected / handshaking / charging
 SCAN_INTERVAL = SCAN_INTERVAL_IDLE  # startup value, adjusted after first read
 
 READ_DELAY = 0.2  # seconds to pause between Modbus block reads (paces bursts)
+
+# Guard rails for the options form. The lower interval bound keeps a mistyped
+# value from hammering a charger that only tolerates a couple of connections;
+# the read-delay ceiling keeps a single poll cycle from outlasting its own
+# schedule.
+MIN_SCAN_INTERVAL = 5
+MAX_SCAN_INTERVAL = 3600
+MIN_READ_DELAY = 0.0
+MAX_READ_DELAY = 5.0
 
 # Charger statuses that count as "active" for polling-rate purposes.
 ACTIVE_STATUSES = {2, 3}  # handshaking, charging

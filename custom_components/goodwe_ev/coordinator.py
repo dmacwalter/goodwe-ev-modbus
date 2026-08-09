@@ -7,17 +7,16 @@ from datetime import timedelta
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusException
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     DOMAIN,
-    SCAN_INTERVAL,
+    READ_DELAY,
     SCAN_INTERVAL_IDLE,
     SCAN_INTERVAL_ACTIVE,
     ACTIVE_STATUSES,
     ACTIVE_CAR_STATES,
-    READ_DELAY,
     REG_SN,
     REG_SW_VERSION,
     REG_HW_VERSION,
@@ -65,17 +64,56 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         host: str,
         port: int,
         unit_id: int,
+        scan_interval_idle: int = SCAN_INTERVAL_IDLE,
+        scan_interval_active: int = SCAN_INTERVAL_ACTIVE,
+        read_delay: float = READ_DELAY,
     ) -> None:
+        # Start on the idle cadence; the first successful read moves it to the
+        # active one if a cable is already connected.
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval_idle),
         )
         self._client = ModbusTcpClient(host, port=port, timeout=10)
         self._unit_id = unit_id
         self.device_info_static: dict = {}
-        self._interval_seconds = SCAN_INTERVAL
+        self._interval_idle = scan_interval_idle
+        self._interval_active = scan_interval_active
+        self._read_delay = read_delay
+        self._interval_seconds = scan_interval_idle
+
+    # ── Options ────────────────────────────────────────────────────────────
+
+    @callback
+    def async_apply_options(
+        self,
+        scan_interval_idle: int,
+        scan_interval_active: int,
+        read_delay: float,
+    ) -> None:
+        """Adopt new polling options without tearing down the integration.
+
+        All three values are read fresh on each cycle rather than baked into
+        anything at construction, so they can be swapped on a live coordinator.
+        The read delay is consumed inside the executor thread; a poll already in
+        flight simply finishes on the old value.
+        """
+        self._interval_idle = scan_interval_idle
+        self._interval_active = scan_interval_active
+        self._read_delay = read_delay
+
+        # Clearing the cached interval forces _apply_dynamic_interval to
+        # reschedule even when the active/idle classification has not changed —
+        # otherwise a new idle interval would not take effect until the next
+        # plug-in event.
+        self._interval_seconds = None
+        if self.data:
+            self._apply_dynamic_interval(self.data)
+        else:
+            self._interval_seconds = scan_interval_idle
+            self.update_interval = timedelta(seconds=scan_interval_idle)
 
     # ── Public write helper ────────────────────────────────────────────────
 
@@ -105,7 +143,7 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             data.get("status") in ACTIVE_STATUSES
             or data.get("car_status") in ACTIVE_CAR_STATES
         )
-        wanted = SCAN_INTERVAL_ACTIVE if active else SCAN_INTERVAL_IDLE
+        wanted = self._interval_active if active else self._interval_idle
         if wanted == self._interval_seconds:
             return
         self._interval_seconds = wanted
@@ -121,8 +159,8 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
                 # Pace consecutive reads: some chargers are overwhelmed by
                 # back-to-back Modbus requests. Runs in an executor thread, so
                 # a blocking sleep is safe here and never touches the event loop.
-                if idx and READ_DELAY:
-                    time.sleep(READ_DELAY)
+                if idx and self._read_delay:
+                    time.sleep(self._read_delay)
                 resp = self._client.read_holding_registers(
                     start, count=count, device_id=self._unit_id
                 )
