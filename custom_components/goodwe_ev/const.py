@@ -8,6 +8,8 @@ CONF_UNIT_ID = "unit_id"
 CONF_SCAN_INTERVAL_IDLE = "scan_interval_idle"
 CONF_SCAN_INTERVAL_ACTIVE = "scan_interval_active"
 CONF_READ_DELAY = "read_delay"
+CONF_RELEASE_WHEN_IDLE = "release_when_idle"
+CONF_ACTIVE_BACKOFF = "active_backoff"
 
 DEFAULT_PORT = 502
 DEFAULT_UNIT_ID = 247
@@ -33,6 +35,30 @@ MIN_SCAN_INTERVAL = 5
 MAX_SCAN_INTERVAL = 3600
 MIN_READ_DELAY = 0.0
 MAX_READ_DELAY = 5.0
+
+# The charger serves a single Modbus connection, and that connection competes
+# with its own outbound cloud uplink. Holding the socket open between polls
+# therefore keeps the charger permanently offline in the SEMS app, no matter
+# how infrequently it is actually read. When idle we close the socket after
+# each poll so the uplink has the whole interval to establish.
+RELEASE_WHEN_IDLE = True
+
+# While idle the socket is contended by design, so a failed connect is an
+# expected outcome rather than a fault. Ride out this many consecutive idle
+# failures on the last known data before surfacing the entities as
+# unavailable, retrying at the active cadence rather than the long idle one.
+IDLE_FAILURE_GRACE = 3
+
+# Backing off while a cable is connected. Retrying a faulted charger every 30
+# seconds achieves nothing. On either a failed read or a charger-reported
+# fault, wait this long before the next attempt. The connection itself is
+# retained throughout: a cable is connected, so the slot stays ours.
+ACTIVE_BACKOFF = 210
+
+# Charger statuses treated as a fault for backoff purposes. 8 (start_failed) is
+# included deliberately: a session that will not start is the case this exists
+# for. Remove it here if you would rather only hard faults trigger a backoff.
+FAULT_STATUSES = {5, 8}
 
 # Charger statuses that count as "active" for polling-rate purposes.
 ACTIVE_STATUSES = {2, 3}  # handshaking, charging

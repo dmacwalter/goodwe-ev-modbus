@@ -15,9 +15,13 @@ from .const import (
     CONF_SCAN_INTERVAL_IDLE,
     CONF_SCAN_INTERVAL_ACTIVE,
     CONF_READ_DELAY,
+    CONF_RELEASE_WHEN_IDLE,
+    CONF_ACTIVE_BACKOFF,
     SCAN_INTERVAL_IDLE,
     SCAN_INTERVAL_ACTIVE,
     READ_DELAY,
+    RELEASE_WHEN_IDLE,
+    ACTIVE_BACKOFF,
 )
 from .coordinator import GoodweEVCoordinator
 
@@ -61,6 +65,8 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
         scan_interval_idle=options.get(CONF_SCAN_INTERVAL_IDLE, SCAN_INTERVAL_IDLE),
         scan_interval_active=options.get(CONF_SCAN_INTERVAL_ACTIVE, SCAN_INTERVAL_ACTIVE),
         read_delay=options.get(CONF_READ_DELAY, READ_DELAY),
+        release_when_idle=options.get(CONF_RELEASE_WHEN_IDLE, RELEASE_WHEN_IDLE),
+        active_backoff=options.get(CONF_ACTIVE_BACKOFF, ACTIVE_BACKOFF),
     )
 
 
@@ -74,6 +80,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scan_interval_idle=options.get(CONF_SCAN_INTERVAL_IDLE, SCAN_INTERVAL_IDLE),
         scan_interval_active=options.get(CONF_SCAN_INTERVAL_ACTIVE, SCAN_INTERVAL_ACTIVE),
         read_delay=options.get(CONF_READ_DELAY, READ_DELAY),
+        release_when_idle=options.get(CONF_RELEASE_WHEN_IDLE, RELEASE_WHEN_IDLE),
+        active_backoff=options.get(CONF_ACTIVE_BACKOFF, ACTIVE_BACKOFF),
     )
     await coordinator.async_config_entry_first_refresh()
 

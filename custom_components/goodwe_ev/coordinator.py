@@ -13,6 +13,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     READ_DELAY,
+    RELEASE_WHEN_IDLE,
+    IDLE_FAILURE_GRACE,
+    ACTIVE_BACKOFF,
+    FAULT_STATUSES,
     SCAN_INTERVAL_IDLE,
     SCAN_INTERVAL_ACTIVE,
     ACTIVE_STATUSES,
@@ -67,6 +71,8 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         scan_interval_idle: int = SCAN_INTERVAL_IDLE,
         scan_interval_active: int = SCAN_INTERVAL_ACTIVE,
         read_delay: float = READ_DELAY,
+        release_when_idle: bool = RELEASE_WHEN_IDLE,
+        active_backoff: int = ACTIVE_BACKOFF,
     ) -> None:
         # Start on the idle cadence; the first successful read moves it to the
         # active one if a cable is already connected.
@@ -82,7 +88,14 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         self._interval_idle = scan_interval_idle
         self._interval_active = scan_interval_active
         self._read_delay = read_delay
+        self._release_when_idle = release_when_idle
+        self._interval_backoff = active_backoff
         self._interval_seconds = scan_interval_idle
+        self._in_backoff = False
+        # Assume idle until the first read proves otherwise, so the socket is
+        # released rather than squatted on if that first read never succeeds.
+        self._active = False
+        self._idle_failures = 0
 
     # ── Options ────────────────────────────────────────────────────────────
 
@@ -92,6 +105,8 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         scan_interval_idle: int,
         scan_interval_active: int,
         read_delay: float,
+        release_when_idle: bool,
+        active_backoff: int,
     ) -> None:
         """Adopt new polling options without tearing down the integration.
 
@@ -103,6 +118,8 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
         self._interval_idle = scan_interval_idle
         self._interval_active = scan_interval_active
         self._read_delay = read_delay
+        self._release_when_idle = release_when_idle
+        self._interval_backoff = active_backoff
 
         # Clearing the cached interval forces _apply_dynamic_interval to
         # reschedule even when the active/idle classification has not changed —
@@ -130,12 +147,92 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
     # ── DataUpdateCoordinator ──────────────────────────────────────────────
 
     async def _async_update_data(self) -> dict:
-        data = await self.hass.async_add_executor_job(self._read_data)
+        try:
+            data = await self.hass.async_add_executor_job(self._read_data)
+        except UpdateFailed:
+            if self._tolerate_idle_failure():
+                return self.data
+            if self._active:
+                # Entities still go unavailable — this is a real failure and
+                # should look like one — but the retry waits out the backoff
+                # instead of hammering the charger every 30 seconds.
+                self._enter_backoff("read failed")
+            raise
+
+        self._idle_failures = 0
         # Must happen on the event loop, never inside _read_data: assigning
         # update_interval reschedules the refresh timer, which is not
         # thread-safe from an executor thread.
         self._apply_dynamic_interval(data)
+
+        faulted = self._charger_faulted(data)
+        if self._active and faulted:
+            self._enter_backoff(f"charger fault: {data.get('status')}")
+        else:
+            self._in_backoff = False
+
+        # Note the backoff is deliberately excluded here: while a cable is
+        # connected the charger's Modbus slot stays ours, faulted or not.
+        if self._release_when_idle and not self._active:
+            # Hand the charger's single Modbus slot back so its cloud uplink
+            # can claim it for the rest of the interval. Closing is cheap and
+            # _ensure_connected reopens on the next poll or write.
+            await self.hass.async_add_executor_job(self._client.close)
+
         return data
+
+    @staticmethod
+    def _charger_faulted(data: dict) -> bool:
+        return data.get("fault_state") == "fault" or data.get("status") in FAULT_STATUSES
+
+    def _enter_backoff(self, reason: str) -> None:
+        """Slow to the backoff cadence until the charger reads clean again.
+
+        Only the polling rate changes — the connection is held throughout, so
+        nothing else can claim the charger's Modbus slot mid-session.
+
+        Deliberately not capped or escalated: each retry either clears the
+        condition, in which case _apply_dynamic_interval restores the active
+        interval on the very next poll, or re-enters the backoff.
+        """
+        first = not self._in_backoff
+        self._in_backoff = True
+        if self._interval_seconds != self._interval_backoff:
+            self._interval_seconds = self._interval_backoff
+            self.update_interval = timedelta(seconds=self._interval_backoff)
+        if first:
+            _LOGGER.info(
+                "Backing off to %ss while a cable is connected (%s)",
+                self._interval_backoff,
+                reason,
+            )
+
+    def _tolerate_idle_failure(self) -> bool:
+        """Absorb a contended idle poll instead of going unavailable.
+
+        Only applies once the socket is being released: in that mode the cloud
+        uplink legitimately holds the connection some of the time, so a failed
+        read says nothing about the charger's health. Retry sooner than the
+        idle interval, and give up after IDLE_FAILURE_GRACE attempts so a
+        genuine outage still surfaces.
+        """
+        if not self._release_when_idle or self._active or self.data is None:
+            return False
+        if self._idle_failures >= IDLE_FAILURE_GRACE:
+            return False
+
+        self._idle_failures += 1
+        _LOGGER.debug(
+            "Idle poll failed (%s/%s), likely cloud uplink holding the socket; "
+            "retrying in %ss",
+            self._idle_failures,
+            IDLE_FAILURE_GRACE,
+            self._interval_active,
+        )
+        if self._interval_seconds != self._interval_active:
+            self._interval_seconds = self._interval_active
+            self.update_interval = timedelta(seconds=self._interval_active)
+        return True
 
     def _apply_dynamic_interval(self, data: dict) -> None:
         """Poll faster while a cable is connected or a session is running."""
@@ -143,6 +240,7 @@ class GoodweEVCoordinator(DataUpdateCoordinator):
             data.get("status") in ACTIVE_STATUSES
             or data.get("car_status") in ACTIVE_CAR_STATES
         )
+        self._active = active
         wanted = self._interval_active if active else self._interval_idle
         if wanted == self._interval_seconds:
             return

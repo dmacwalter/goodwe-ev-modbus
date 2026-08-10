@@ -15,11 +15,15 @@ from .const import (
     CONF_SCAN_INTERVAL_IDLE,
     CONF_SCAN_INTERVAL_ACTIVE,
     CONF_READ_DELAY,
+    CONF_RELEASE_WHEN_IDLE,
+    CONF_ACTIVE_BACKOFF,
     DEFAULT_PORT,
     DEFAULT_UNIT_ID,
     SCAN_INTERVAL_IDLE,
     SCAN_INTERVAL_ACTIVE,
     READ_DELAY,
+    RELEASE_WHEN_IDLE,
+    ACTIVE_BACKOFF,
     MIN_SCAN_INTERVAL,
     MAX_SCAN_INTERVAL,
     MIN_READ_DELAY,
@@ -74,6 +78,14 @@ def _options_schema(options: dict[str, Any]) -> vol.Schema:
                 CONF_READ_DELAY,
                 default=options.get(CONF_READ_DELAY, READ_DELAY),
             ): vol.All(vol.Coerce(float), vol.Range(min=MIN_READ_DELAY, max=MAX_READ_DELAY)),
+            vol.Required(
+                CONF_ACTIVE_BACKOFF,
+                default=options.get(CONF_ACTIVE_BACKOFF, ACTIVE_BACKOFF),
+            ): interval,
+            vol.Required(
+                CONF_RELEASE_WHEN_IDLE,
+                default=options.get(CONF_RELEASE_WHEN_IDLE, RELEASE_WHEN_IDLE),
+            ): bool,
         }
     )
 
