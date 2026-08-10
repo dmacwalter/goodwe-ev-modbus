@@ -37,12 +37,16 @@
         "data": {
           "scan_interval_active": "Active poll interval (seconds)",
           "scan_interval_idle": "Idle poll interval (seconds)",
-          "read_delay": "Delay between block reads (seconds)"
+          "read_delay": "Delay between block reads (seconds)",
+          "active_backoff": "Backoff after a fault (seconds)",
+          "release_when_idle": "Release the connection when nothing is plugged in"
         },
         "data_description": {
           "scan_interval_active": "Used while a cable is connected, handshaking, or charging.",
           "scan_interval_idle": "Used only when nothing is plugged in.",
-          "read_delay": "Paces consecutive Modbus requests. Raise this if the charger drops reads."
+          "read_delay": "Paces consecutive Modbus requests. Raise this if the charger drops reads.",
+          "active_backoff": "How long to wait before retrying when a cable is connected but the read fails or the charger reports a fault.",
+          "release_when_idle": "Closes the Modbus socket after each idle poll so the charger's cloud uplink can use it, letting the charger appear in the SEMS app. The connection is held open continuously whenever a cable is connected."
         }
       }
     }
