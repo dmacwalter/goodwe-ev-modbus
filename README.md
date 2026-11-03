@@ -11,7 +11,7 @@ This fork builds on [ondrej111/goodwe-ev-modbus](https://github.com/ondrej111/go
 - **Diagnostics** — a new binary sensor platform for per-link connectivity (inverter, EMS, etc.) plus fault/warning problem sensors, and new diagnostic sensors for fault state, power source, start mode, and charging strategy.
 - **Adaptive polling** — the scan interval drops to 30s while a cable is connected/handshaking/charging and backs off to 60s when idle, instead of polling at a fixed rate regardless of charger state.
 - **Options flow** — poll intervals and read delay are now tunable from the integration's Configure dialog, and apply live without reloading the integration.
-- **Idle socket release** — the Modbus connection is closed between idle polls so the charger's own SEMS cloud uplink can use it, fixing chargers that showed as permanently offline in the GoodWe app. Retries back off automatically when the charger reports a fault instead of hammering it every 30 seconds.
+- **Idle socket release** — when no car is connected, the Modbus connection is closed between polls so the charger isn't held open continuously. While a cable is connected the connection is kept, so control isn't contended mid-session. Retries back off automatically when the charger reports a fault instead of hammering it every 30 seconds.
 
 ## Requirements
 
@@ -83,6 +83,7 @@ Go to **Settings → Devices & Services → Add Integration** and search for **G
 
 - Data is polled every **30 seconds** while a cable is connected/handshaking/charging, and every **60 seconds** when idle. Both intervals, and the read delay between Modbus block reads, are adjustable from the integration's Configure dialog.
 - The integration communicates **locally only** — no GoodWe cloud account needed.
+- The charger accepts only one Modbus TCP connection, and while this integration holds it the charger's own cloud uplink is offline, so the charger shows as offline in the SEMS app. Disabling the integration brings SEMS back within a few minutes. SEMS does not backfill data it missed while offline. Changing transparent mode (register 10157) to route via a gateway was tested and did not restore SEMS.
 - Energy consumption sensors (Total/Session/Green/Grid Energy) require charger firmware **V6 or newer**. On earlier firmware these sensors do not report.
 - Total Energy resets to 0 if the charger's internal counter is cleared (e.g. factory reset).
 - The Charging switch reads its state from Charger Status (status = charging), not from the command register, so it accurately reflects whether charging is actually in progress.
