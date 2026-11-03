@@ -4,3 +4,5 @@ output.txt
 *.pdf
 icon_2x.png
 scan_registers.py
+__pycache__/
+*.pyc
